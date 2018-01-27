@@ -30,6 +30,8 @@ class Player:
         self.strength = strength
         self.character = '@'
         self.name = "tab"
+        self.in_building = False
+        self.building = None
 
     def move(self, key):
         if key == KEY_RIGHT and self.x < self.dimensions[1] - 2:
@@ -93,20 +95,52 @@ class Building:
     """
     Who wants to be outside??
     """
-    def __init__(self, y, x, size, purpose, appearance):
+    def __init__(self, y, x, size, purpose, appearance, o):
         self.y = y
         self.x = x
-        self.size = size
+        #self.size = size  forget it for now
         self.purpose = purpose
         self.appearance = appearance
+        self.inside_options = o
 
     def __str__(self):
         return purpose
 
     def draw(self, w):
+        """
         string = self.appearance * self.size
         for i in xrange(0, self.size):
             w.addstr(self.y+i, self.x, string)
+        """
+        w.addstr(self.y, self.x, self.appearance)
+
+    def display_options(self):
+        string = " What do you want to do?\n (Press the number on the keyboard)\n"
+        for count, option in enumerate(self.inside_options):
+            string += " {}: {}\n".format(count, option)
+        return string
+
+class Day:
+    """
+    A day consists of 24 hours.
+
+    Events take up hours but earn you money or knowledge.
+    """
+    def __init__(self):
+        self.length = 24
+        self.day = []
+        self.events = {"work": "w",
+                       "class": "c",
+                       "study": "s",
+                       "exercise": "e",
+                       "sleep": "z"}
+
+    def __str__(self):
+        return " ".join(self.day)
+
+    def add_event(self, e):
+        event = self.events[e]
+        self.day.append(event)
 
 
 def format_time(start):
@@ -120,6 +154,14 @@ def pregame():
     return [wealth, knowledge, strength]
 
 
+def redraw_world(world, buildings):
+    world.clear()
+    world.border(0)
+    world.addstr(0, 24, "Text RPG")
+    for b in buildings:
+        b.draw(world)
+
+
 def game(rows, cols, y, x, stats):
     # Game Setup
     title = "Text RPG"
@@ -130,9 +172,12 @@ def game(rows, cols, y, x, stats):
     curses.curs_set(0)
     world.border(0)
     world.nodelay(1)
-    world.addstr(0, int(cols/2) - len(title), title)
+    world.addstr(0, 24, title)
+
+    # Initialize Day
+    today = Day()
     bottom = 20
-    world.addstr(bottom, 0, '_'*60)
+    world.addstr(bottom, 1, 'Events: ['+str(today)+']')
     dimensions = world.getmaxyx()
     dimensions = (bottom, dimensions[1])
 
@@ -150,10 +195,10 @@ def game(rows, cols, y, x, stats):
     #world.addstr(info.y+1, info.x, info.prices())
 
     # Initialize buildings
-    work = Building(15, 20, 4, "work", "W")
-    school = Building(10, 30, 5, "school", "S")
-    gym = Building(5, 5, 3, "gym", "G")
-    house = Building(2, 48, 2, "house", "H")
+    work = Building(15, 20, 4, "work", "W", ["work", "leave"])
+    school = Building(10, 30, 5, "school", "S", ["class", "study", "leave"])
+    gym = Building(5, 5, 3, "gym", "G", ["exercise", "leave"])
+    house = Building(2, 48, 2, "house", "H", ["sleep", "leave"])
 
     buildings = [work, school, gym, house]
 
@@ -171,22 +216,47 @@ def game(rows, cols, y, x, stats):
     # Game Loop
     while key != ord('q'):
         # Timekeeping
+        # This will be changed to event but... i think i can find a use for this
         seconds = format_time(start_time)
-        if seconds == 30:
+        if seconds == 10:
             next_day = True
-        if seconds == 30 and next_day:  # go to the next day
-            world.addstr(info.y+1, info.x, info.prices())
+        if seconds == 10 and next_day:  # go to the next day
+            #world.addstr(info.y+1, info.x, info.prices())
             start_time = time.time()
             seconds = 0
             next_day = False
             day += 1
+        world.addstr(29, 0, "Day: {}".format(day))
 
-        world.addstr(29, 0, "Day: {} Time: {} Start: {}".format(day, seconds, start_time))
+        # rewrite info on screen... probably inefficient but will do for now
+        world.addstr(info.y, info.x, str(info))
+        world.addstr(bottom, 1, 'Events: ['+str(today)+']')
+
         # player movement
         key = world.getch()
-        world.addch(player.y, player.x, ord(' '))
-        player.move(key)
-        world.addch(player.y, player.x, player.character)
+        if not player.in_building:
+            world.addch(player.y, player.x, ord(' '))
+            player.move(key)
+            world.addch(player.y, player.x, player.character)
+
+        # collision detection
+            for b in buildings:
+                if player.x == b.x and player.y == b.y:
+                    player.in_building = True
+                    player.building = b
+                    world.clear()
+                    world.addstr(0, 24, b.purpose)
+                    world.addstr(1, 0, b.display_options())
+                    world.border(0)
+                    player.x += 1
+
+        # exit building and return to world
+        if player.in_building:
+            if key == ord('0'):
+                event = player.building.inside_options[0]
+                today.add_event(event)
+                player.in_building = False
+                redraw_world(world, buildings)
 
 
     curses.beep()
@@ -198,9 +268,3 @@ if __name__ == "__main__":
     window = [30, 60, 0, 0]
     player_stats = pregame()
     game(window[0], window[1], window[2], window[3], player_stats)
-
-    """
-    pc = gdax.PublicClient()
-    tkr = pc.get_product_ticker("BTC-USD")
-    print tkr
-    """
