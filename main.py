@@ -102,7 +102,7 @@ class BankAccount:
         self.loan = Loan(a, l)
 
     def loan_balance(self):
-        return self.loan if self.loan else 0
+        return self.loan.balance if self.loan else 0
 
 
 class Loan:
@@ -115,6 +115,9 @@ class Loan:
         self.life = life  # number of days to payback loan
         self.vi = vi  # variable interest rate
         self.interest_rate = ir
+
+    def __str__(self):
+        return "{}".format(self.balance)
 
     def check_balance(self):
         return self.balance
@@ -217,6 +220,7 @@ class Building:
                 if event == "leave":
                     player.in_building = False
                     redraw_world(world, buildings)
+                # this needs to become its own function
                 if event == "deposit":
                     world.addstr(10, 5, "Enter amount to deposit, then hit space:       ")
                     key = None
@@ -241,8 +245,49 @@ class Building:
                         world.addstr(10, 5, "Not Enough Funds!")
                 if event == "withdraw":
                     world.addstr(10, 5, "Enter amount to withdraw, then hit space:      ")
+                    key = None
+                    amount = ""
+                    valid = [ord('1'), ord('2'), ord('3'), ord('4'), ord('5'),
+                             ord('6'), ord('7'), ord('8'), ord('9'), ord('0')]
+                    while key != ord(' '):
+                        key = world.getch()
+                        if key in valid:
+                            amount += str(chr(key))
+                        world.addstr(11, 5, amount)
+                    world.addstr(11, 5, " "*len(amount))
+                    if player.bank.balance() >= int(amount):
+                        player.money += int(amount)
+                        player.bank.withdraw(int(amount))
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Funds Withdrawn.")
+                    else:
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Negative balance not allowed!")
                 if event == "loan":
                     world.addstr(10, 5, "Enter loan amount, then hit space (max: 1000): ")
+                    key = None
+                    amount = ""
+                    valid = [ord('1'), ord('2'), ord('3'), ord('4'), ord('5'),
+                             ord('6'), ord('7'), ord('8'), ord('9'), ord('0')]
+                    while key != ord(' '):
+                        key = world.getch()
+                        if key in valid:
+                            amount += str(chr(key))
+                        world.addstr(11, 5, amount)
+                    world.addstr(11, 5, " "*len(amount))
+                    if int(amount) <= 1000 and player.bank.loan is None:
+                        player.bank.create_loan(int(amount), 10)  # 1000 dollars, 10 days to repay
+                        player.money += int(amount)
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Money has been loaned. {} days left to repay".format(player.bank.loan.life))
+                    else:
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Sorry thats too much or you already have a loan.")
+
 
 
 
@@ -336,7 +381,8 @@ def redraw_world(world, buildings):
 def end_game_rating(player):
     rating = ""
     total_assets = player.money + player.bank.balance() - player.bank.loan_balance()
-
+    print "Knowledge: {}".format(player.knowledge)
+    print "Wealth: {}".format(total_assets)
     if total_assets < 101 and player.knowledge < 20:
         return "Poor and Stupid"
     else:
@@ -434,8 +480,6 @@ def game(rows, cols, y, x, stats):
     curses.beep()
     curses.endwin()
     print "Gameover."
-    print "Knowledge: {}".format(player.knowledge)
-    print "Wealth: {}".format(player.money)
     print(end_game_rating(player))
 
 
