@@ -35,6 +35,7 @@ class Player:
         self.building = None
         self.employed = False
         self.wage = 8
+        self.bank = BankAccount()
 
     def move(self, key):
         if key == KEY_RIGHT and self.x < self.dimensions[1] - 2:
@@ -69,6 +70,74 @@ class Citizen:
         self.character = c
 
 
+class BankAccount:
+    """
+    A general bank account class.
+
+    +Deposits ((fixed or variable?) interest rate, compounded daily)
+    +Withdrawals
+    +Loans ((fixed or variable) interest rate, compounded daily)
+    +Investment Account (like a brokerage acct or ira.)
+    """
+    def __init__(self):
+        self._balance = 0
+        self.interest_rate = randint(0, 5)/100
+        self.loan = None
+
+    def deposit(self, amount):
+        self._balance += amount
+
+    def withdraw(self, amount):
+        if amount <= self._balance:
+            self._balance -= amount
+
+    def balance(self):
+        return self._balance
+
+    def compound_balance(self):
+        interest = self._balance * self.interest_rate
+        self._balance += interest
+
+    def create_loan(self, a, l):
+        self.loan = Loan(a, l)
+
+    def loan_balance(self):
+        return self.loan if self.loan else 0
+
+
+class Loan:
+    """
+    Easier to manage when its in a class on its own
+    """
+    def __init__(self, amount, life, vi = False, ir = .05):
+        self.amount = amount
+        self.balance = amount
+        self.life = life  # number of days to payback loan
+        self.vi = vi  # variable interest rate
+        self.interest_rate = ir
+
+    def check_balance(self):
+        return self.balance
+
+    def check_interest_rate(self):
+        return self.interest_rate
+
+    def daily_payment(self):
+        pass
+
+    def make_payment(self, payment):
+        if payment <= self.balance:
+            self.balance -= payment
+
+    def compound_loan(self):
+        interest = loan * self.interest_rate
+        self.balance += interest
+
+    def change_interest_rate(self):
+        self.interest_rate = randint(0, 10)
+        self.interest_rate = self.interest_rate/100
+
+
 class Information:
     """
     This class will display world information to the player on the screen.
@@ -83,7 +152,7 @@ class Information:
         self.price_list = ["", "", "", ""]
 
     def __str__(self):
-        return "money: {} Knowledge: {} Strength: {}".format(
+        return "Cash: {} Knowledge: {} Strength: {}".format(
                                                         self.player.money,
                                                         self.player.knowledge,
                                                         self.player.strength)
@@ -104,15 +173,18 @@ class Information:
                                                            self.price_list[2],
                                                            self.price_list[3])
 
+    def bank_info(self):
+        return "Balance: {} | Loan balance: {}".format(self.player.bank.balance(),
+                                                       self.player.bank.loan_balance())
+
 
 class Building:
     """
     Who wants to be outside??
     """
-    def __init__(self, y, x, size, purpose, appearance, o):
+    def __init__(self, y, x, purpose, appearance, o):
         self.y = y
         self.x = x
-        #self.size = size  forget it for now
         self.purpose = purpose
         self.appearance = appearance
         self.inside_options = o
@@ -131,8 +203,47 @@ class Building:
     def display_options(self):
         string = " What do you want to do?\n (Press the number on the keyboard)\n"
         for count, option in enumerate(self.inside_options):
-            string += " {}: {}\n".format(count, option)
+            string += " {}: {}\n".format(count+1, option)
         return string
+
+    def player_input(self, key, world, player, day_manager, buildings):
+        for i in xrange(1, len(self.inside_options)+1):
+            if key == ord(str(i)):
+                event = player.building.inside_options[i-1]
+                day_manager.today.add_event(event)
+                if event == "sleep":
+                    day_manager.add_day()
+                    world.addstr(20, 1, 'Today : ['+str(day_manager.today)+']')
+                if event == "leave":
+                    player.in_building = False
+                    redraw_world(world, buildings)
+                if event == "deposit":
+                    world.addstr(10, 5, "Enter amount to deposit, then hit space:       ")
+                    key = None
+                    amount = ""
+                    valid = [ord('1'), ord('2'), ord('3'), ord('4'), ord('5'),
+                             ord('6'), ord('7'), ord('8'), ord('9'), ord('0')]
+                    while key != ord(' '):
+                        key = world.getch()
+                        if key in valid:
+                            amount += str(chr(key))
+                        world.addstr(11, 5, amount)
+                    world.addstr(11, 5, " "*len(amount))
+                    if player.money >= int(amount):
+                        player.money -= int(amount)
+                        player.bank.deposit(int(amount))
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Funds Deposited.")
+                    else:
+                        world.addstr(10, 5, " "*50)
+                        world.border(0)
+                        world.addstr(10, 5, "Not Enough Funds!")
+                if event == "withdraw":
+                    world.addstr(10, 5, "Enter amount to withdraw, then hit space:      ")
+                if event == "loan":
+                    world.addstr(10, 5, "Enter loan amount, then hit space (max: 1000): ")
+
 
 
 class Day:
@@ -150,7 +261,10 @@ class Day:
                        "class": ["c", 2],
                        "study": ["s", 1],
                        "exercise": ["e", 1],
-                       "sleep": ["z", 8]}
+                       "sleep": ["z", 8],
+                       "deposit": ["d", 0],
+                       "withdraw": ["W", 0],
+                       "loan": ["l", 0]}
 
     def __str__(self):
         return " ".join(self.display_day)
@@ -159,13 +273,16 @@ class Day:
         return " ".join(self.day)
 
     def add_event(self, e):
-        event = self.events[e]
-        if event[1] + len(self.day) - 1 < self.length:
-            self.player.manage_event(event[0])
-            padding = self.display_day.index("_")
-            for i in xrange(0, event[1]):
-                self.display_day[padding+i] = event[0]
-                self.day.append(event[0])
+        if e == "class" and self.player.money < 20:
+            return
+        if e != "leave":
+            event = self.events[e]
+            if event[1] + len(self.day) - 1 < self.length:
+                self.player.manage_event(event[0])
+                padding = self.display_day.index("_")
+                for i in xrange(0, event[1]):
+                    self.display_day[padding+i] = event[0]
+                    self.day.append(event[0])
 
 
 class DayManager:
@@ -194,7 +311,12 @@ def format_time(start):
 
 
 def generate_map(dimensions):
+    """
+    Want to write a function that randomly places buildings around the map,
+    including all core buildings (bank, school, work, )
+    """
     pass
+
 
 def pregame():
     money = 100
@@ -209,6 +331,16 @@ def redraw_world(world, buildings):
     world.addstr(0, 24, "Text RPG")
     for b in buildings:
         b.draw(world)
+
+
+def end_game_rating(player):
+    rating = ""
+    total_assets = player.money + player.bank.balance() - player.bank.loan_balance()
+
+    if total_assets < 101 and player.knowledge < 20:
+        return "Poor and Stupid"
+    else:
+        return "Not Poor and Stupid. I'll add more later"
 
 
 def game(rows, cols, y, x, stats):
@@ -229,7 +361,7 @@ def game(rows, cols, y, x, stats):
 
     # Initialize Player
     player_y = 1
-    player_x = 1
+    player_x = 35
     player = Player(player_y, player_x, dimensions,
                     stats[0], stats[1], stats[2])
 
@@ -239,18 +371,18 @@ def game(rows, cols, y, x, stats):
 
     # Initialize information
     info_y = 21
-    info_x = 0
+    info_x = 1
     info = Information(info_y, info_x, player)
     world.addstr(info.y, info.x, str(info))
     #world.addstr(info.y+1, info.x, info.prices())
 
     # Initialize buildings
-    work = Building(15, 20, 4, "work", "W", ["work", "leave"])
-    school = Building(10, 30, 5, "school", "S", ["class", "leave"])
-    gym = Building(5, 5, 3, "gym", "G", ["exercise", "leave"])
-    house = Building(2, 48, 2, "house", "H", ["sleep", "leave"])
-
-    buildings = [work, school, gym, house]
+    work = Building(15, 20, "work", "W", ["work", "leave"])
+    school = Building(10, 30, "school", "S", ["class", "study", "leave"])
+    gym = Building(5, 5, "gym", "G", ["exercise", "leave"])
+    house = Building(2, 48, "house", "H", ["sleep", "leave"])
+    bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "loan", "leave"])
+    buildings = [work, school, gym, house, bank]
 
     # draw buildings
     for b in buildings:
@@ -265,25 +397,11 @@ def game(rows, cols, y, x, stats):
 
     # Game Loop
     while key != ord('q'):
-        """
-        # Timekeeping
-        # This will be changed to event but... i think i can find a use for this
-        seconds = format_time(start_time)
-        if seconds == 10:
-            next_day = True
-        if seconds == 10 and next_day:  # go to the next day
-            #world.addstr(info.y+1, info.x, info.prices())
-            start_time = time.time()
-            seconds = 0
-            next_day = False
-            day += 1
-        """
-
+        # Display information to the player
         world.addstr(29, 0, "Day: {}".format(day_manager.day_number()))
-
-        # rewrite info on screen... probably inefficient but will do for now
         world.addstr(info.y, info.x, str(info))
-        world.addstr(bottom, 1, 'Events: ['+str(day_manager.today)+']')
+        world.addstr(info.y+1, info.x, info.bank_info())
+        world.addstr(bottom, 1, 'Today : ['+str(day_manager.today)+']')
 
         # player movement
         key = world.getch()
@@ -305,15 +423,8 @@ def game(rows, cols, y, x, stats):
 
         # exit building and return to world
         if player.in_building:
-            if key == ord('0') and player.building.purpose != "house":  # do event
-                event = player.building.inside_options[0]
-                day_manager.today.add_event(event)
-            if key == ord('0') and player.building.purpose == "house":
-                day_manager.add_day()
-                world.addstr(bottom, 1, 'Events: ['+str(day_manager.today)+']')
-            if key == ord('1'):  # exit building
-                player.in_building = False
-                redraw_world(world, buildings)
+            player.building.player_input(key, world, player,
+                                         day_manager, buildings)
 
         # Check if day limit has been reached
         if day_manager.day_number() > max_days:
@@ -325,6 +436,7 @@ def game(rows, cols, y, x, stats):
     print "Gameover."
     print "Knowledge: {}".format(player.knowledge)
     print "Wealth: {}".format(player.money)
+    print(end_game_rating(player))
 
 
 if __name__ == "__main__":
