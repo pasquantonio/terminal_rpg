@@ -34,8 +34,15 @@ class Player:
         self.in_building = False
         self.building = None
         self.employed = False
-        self.wage = 8
         self.bank = BankAccount()
+        self.positions = {0: ["janitor", 8],
+                          30: ["mailclerk", 10],
+                          45: ["salesman", 15],
+                          75: ["manager", 30],
+                          120: ["executive", 60],
+                          180: ["vice president", 120],
+                          250: ["ceo", 200]}
+        self.job = self.positions[0]
 
     def move(self, key):
         if key == KEY_RIGHT and self.x < self.dimensions[1] - 2:
@@ -57,7 +64,22 @@ class Player:
         if event == "s":  # study
             self.knowledge += 1
         if event == "w":  # work
-            self.money += (self.wage * 4)  # shifts are 4 hours long
+            self.money += (self.job[1] * 4)  # shifts are 4 hours long
+
+    def check_promotion(self):
+        if self.knowledge >= 250:
+            return self.positions[250]
+        if self.knowledge >= 180:
+            return self.positions[180]
+        if self.knowledge >= 120:
+            return self.positions[120]
+        if self.knowledge >= 75:
+            return self.positions[75]
+        if self.knowledge >= 45:
+            return self.positions[45]
+        if self.knowledge >= 30:
+            return self.positions[30]
+        return self.positions[0]
 
 
 class Citizen:
@@ -81,7 +103,7 @@ class BankAccount:
     """
     def __init__(self):
         self._balance = 0
-        self.interest_rate = randint(0, 5)/100
+        self.interest_rate = 0.05
         self.loan = None
 
     def deposit(self, amount):
@@ -94,6 +116,9 @@ class BankAccount:
     def balance(self):
         return self._balance
 
+    def get_interest_rate(self):
+        return self.interest_rate * 100
+
     def compound_balance(self):
         interest = self._balance * self.interest_rate
         self._balance += interest
@@ -102,14 +127,24 @@ class BankAccount:
         self.loan = Loan(a, l)
 
     def loan_balance(self):
-        return self.loan.balance if self.loan else 0
+        return self.loan.get_balance() if self.loan else 0
 
+    def loan_interest_rate(self):
+        return self.loan.get_interest_rate() if self.loan else 0
+
+    def repay_loan(self, amount):
+        if self.loan:
+            self.loan.make_payment(amount)
+        return
+
+    def destroy_loan(self):
+        self.loan = None
 
 class Loan:
     """
     Easier to manage when its in a class on its own
     """
-    def __init__(self, amount, life, vi = False, ir = .05):
+    def __init__(self, amount, life, ir = .05, vi = False):
         self.amount = amount
         self.balance = amount
         self.life = life  # number of days to payback loan
@@ -119,21 +154,20 @@ class Loan:
     def __str__(self):
         return "{}".format(self.balance)
 
-    def check_balance(self):
+    def get_balance(self):
         return self.balance
 
-    def check_interest_rate(self):
-        return self.interest_rate
+    def get_interest_rate(self):
+        return self.interest_rate * 100
 
     def daily_payment(self):
         pass
 
     def make_payment(self, payment):
-        if payment <= self.balance:
-            self.balance -= payment
+        self.balance -= payment
 
     def compound_loan(self):
-        interest = loan * self.interest_rate
+        interest = self.balance * self.interest_rate
         self.balance += interest
 
     def change_interest_rate(self):
@@ -177,8 +211,11 @@ class Information:
                                                            self.price_list[3])
 
     def bank_info(self):
-        return "Balance: {} | Loan balance: {}".format(self.player.bank.balance(),
-                                                       self.player.bank.loan_balance())
+        return "Balance: {0:.2f} @ {1:.2f}% | Loan balance: {2:.2f} @ {3:.2f}%".format(
+                                        self.player.bank.balance(),
+                                        self.player.bank.get_interest_rate(),
+                                        self.player.bank.loan_balance(),
+                                        self.player.bank.loan_interest_rate())
 
 
 class Building:
@@ -214,7 +251,7 @@ class Building:
             if key == ord(str(i)):
                 event = player.building.inside_options[i-1]
                 day_manager.today.add_event(event)
-                if event == "sleep":
+                if event == "sleep":  # creates new day
                     day_manager.add_day()
                     world.addstr(20, 1, 'Today : ['+str(day_manager.today)+']')
                 if event == "leave":
@@ -265,7 +302,7 @@ class Building:
                         world.addstr(10, 5, " "*50)
                         world.border(0)
                         world.addstr(10, 5, "Negative balance not allowed!")
-                if event == "loan":
+                if event == "get loan":
                     world.addstr(10, 5, "Enter loan amount, then hit space (max: 1000): ")
                     key = None
                     amount = ""
@@ -287,9 +324,39 @@ class Building:
                         world.addstr(10, 5, " "*50)
                         world.border(0)
                         world.addstr(10, 5, "Sorry thats too much or you already have a loan.")
-
-
-
+                if event == "repay loan":
+                    if player.bank.loan:
+                        world.addstr(10, 5, "Enter loan amount, then hit space (max: 1000): ")
+                        key = None
+                        amount = ""
+                        valid = [ord('1'), ord('2'), ord('3'), ord('4'), ord('5'),
+                                 ord('6'), ord('7'), ord('8'), ord('9'), ord('0')]
+                        while key != ord(' '):
+                            key = world.getch()
+                            if key in valid:
+                                amount += str(chr(key))
+                            world.addstr(11, 5, amount)
+                        world.addstr(11, 5, " "*len(amount))
+                        if int(amount) <= player.money:
+                            player.money -= int(amount)
+                            player.bank.repay_loan(int(amount))
+                            world.addstr(10, 5, " "*50)
+                            world.border(0)
+                            world.addstr(10, 5, "Payment received")
+                            if player.bank.loan_balance() <= 0:
+                                player.bank.destroy_loan()
+                        else:
+                            world.addstr(10, 5, "Not enough funds. (withdraw from bank first)")
+                    else:
+                        world.addstr(10, 5, "you do not currently have a loan.")
+                if event == "ask for promotion":
+                    job = player.job
+                    player.job = player.check_promotion()
+                    if job != player.job:
+                        world.addstr(10, 5, "New position: {}".format(player.job[0]))
+                        world.addstr(11, 5, "Pay per Hour: {}".format(player.job[1]))
+                    else:
+                        world.addstr(10, 5, "Gain more knowledge to get promoted")
 
 class Day:
     """
@@ -309,7 +376,9 @@ class Day:
                        "sleep": ["z", 8],
                        "deposit": ["d", 0],
                        "withdraw": ["W", 0],
-                       "loan": ["l", 0]}
+                       "get loan": ["l", 0],
+                       "repay loan": ["r", 0],
+                       "ask for promotion": ["p", 0]}
 
     def __str__(self):
         return " ".join(self.display_day)
@@ -318,9 +387,11 @@ class Day:
         return " ".join(self.day)
 
     def add_event(self, e):
+        ignore = ["leave", "deposit", "withdraw", "get loan", "repay loan",
+        "ask for promotion"]
         if e == "class" and self.player.money < 20:
             return
-        if e != "leave":
+        if e not in ignore:
             event = self.events[e]
             if event[1] + len(self.day) - 1 < self.length:
                 self.player.manage_event(event[0])
@@ -340,6 +411,9 @@ class DayManager:
         self.player = player
 
     def add_day(self):
+        self.player.bank.compound_balance()
+        if self.player.bank.loan:
+            self.player.bank.loan.compound_loan()
         self.day_list.append(Day(self.player))
         self.today = self.day_list[-1]
         for i in xrange(0, 24):
@@ -420,14 +494,13 @@ def game(rows, cols, y, x, stats):
     info_x = 1
     info = Information(info_y, info_x, player)
     world.addstr(info.y, info.x, str(info))
-    #world.addstr(info.y+1, info.x, info.prices())
 
     # Initialize buildings
-    work = Building(15, 20, "work", "W", ["work", "leave"])
-    school = Building(10, 30, "school", "S", ["class", "study", "leave"])
-    gym = Building(5, 5, "gym", "G", ["exercise", "leave"])
+    work = Building(15, 20, "work", "W", ["work", "ask for promotion", "leave"])
+    school = Building(10, 30, "school", "S", ["study", "class", "leave"])
+    gym = Building(5, 5, "gym", "G", ["exercise", "personal training", "leave"])
     house = Building(2, 48, "house", "H", ["sleep", "leave"])
-    bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "loan", "leave"])
+    bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "get loan", "repay loan", "leave"])
     buildings = [work, school, gym, house, bank]
 
     # draw buildings
@@ -447,6 +520,9 @@ def game(rows, cols, y, x, stats):
         world.addstr(29, 0, "Day: {}".format(day_manager.day_number()))
         world.addstr(info.y, info.x, str(info))
         world.addstr(info.y+1, info.x, info.bank_info())
+        world.addstr(info.y+2, info.x, "Job: {} Pay: {}".format(
+                                                          info.player.job[0],
+                                                          info.player.job[1]))
         world.addstr(bottom, 1, 'Today : ['+str(day_manager.today)+']')
 
         # player movement
