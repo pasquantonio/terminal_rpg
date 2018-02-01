@@ -43,6 +43,8 @@ class Player:
                           180: ["vice president", 120],
                           250: ["ceo", 200]}
         self.job = self.positions[0]
+        self.alarm_clock = False
+        self.pill = 0
 
     def move(self, key):
         if key == KEY_RIGHT and self.x < self.dimensions[1] - 2:
@@ -254,6 +256,8 @@ class Building:
                 if event == "sleep":  # creates new day
                     day_manager.add_day()
                     world.addstr(20, 1, 'Today : ['+str(day_manager.today)+']')
+                    if player.pill >= 1:
+                        player.pill -= 1
                 if event == "leave":
                     player.in_building = False
                     redraw_world(world, buildings)
@@ -314,16 +318,19 @@ class Building:
                             amount += str(chr(key))
                         world.addstr(11, 5, amount)
                     world.addstr(11, 5, " "*len(amount))
-                    if int(amount) <= 1000 and player.bank.loan is None:
-                        player.bank.create_loan(int(amount), 10)  # 1000 dollars, 10 days to repay
-                        player.money += int(amount)
-                        world.addstr(10, 5, " "*50)
-                        world.border(0)
-                        world.addstr(10, 5, "Money has been loaned. {} days left to repay".format(player.bank.loan.life))
+                    if amount != "":
+                        if int(amount) <= 1000 and player.bank.loan is None:
+                            player.bank.create_loan(int(amount), 10)  # 1000 dollars, 10 days to repay
+                            player.money += int(amount)
+                            world.addstr(10, 5, " "*50)
+                            world.border(0)
+                            world.addstr(10, 5, "Money has been loaned. {} days left to repay".format(player.bank.loan.life))
+                        else:
+                            world.addstr(10, 5, " "*50)
+                            world.border(0)
+                            world.addstr(10, 5, "Sorry thats too much or you already have a loan.")
                     else:
-                        world.addstr(10, 5, " "*50)
-                        world.border(0)
-                        world.addstr(10, 5, "Sorry thats too much or you already have a loan.")
+                        world.addstr(10, 5, "Please try again.                              ")
                 if event == "repay loan":
                     if player.bank.loan:
                         world.addstr(10, 5, "Enter loan amount, then hit space (max: 1000): ")
@@ -337,16 +344,19 @@ class Building:
                                 amount += str(chr(key))
                             world.addstr(11, 5, amount)
                         world.addstr(11, 5, " "*len(amount))
-                        if int(amount) <= player.money:
-                            player.money -= int(amount)
-                            player.bank.repay_loan(int(amount))
-                            world.addstr(10, 5, " "*50)
-                            world.border(0)
-                            world.addstr(10, 5, "Payment received")
-                            if player.bank.loan_balance() <= 0:
-                                player.bank.destroy_loan()
+                        if amount != "":
+                            if int(amount) <= player.money:
+                                player.money -= int(amount)
+                                player.bank.repay_loan(int(amount))
+                                world.addstr(10, 5, " "*50)
+                                world.border(0)
+                                world.addstr(10, 5, "Payment received")
+                                if player.bank.loan_balance() <= 0:
+                                    player.bank.destroy_loan()
+                            else:
+                                world.addstr(10, 5, "Not enough funds. (withdraw from bank first)")
                         else:
-                            world.addstr(10, 5, "Not enough funds. (withdraw from bank first)")
+                            world.addstr(10, 5, "Please try again.                              ")
                     else:
                         world.addstr(10, 5, "you do not currently have a loan.")
                 if event == "ask for promotion":
@@ -357,6 +367,20 @@ class Building:
                         world.addstr(11, 5, "Pay per Hour: {}".format(player.job[1]))
                     else:
                         world.addstr(10, 5, "Gain more knowledge to get promoted")
+                if event == "buy caffiene pill":
+                    if player.money >= 45:
+                        player.money -= 45
+                        player.pill += 1
+                        world.addstr(10, 5, "Purchased 1 pill.")
+                    else:
+                        world.addstr(10, 5, "You need 45 dollars to buy that.")
+                if event == "buy alarm clock":
+                    if player.money >= 200:
+                        player.money -= 200
+                        player.alarm_clock = True
+                        world.addstr(10, 5, "Purchased alarm clock")
+                    else:
+                        world.addstr(10, 5, "You need 200 dollars to buy that.")
 
 class Day:
     """
@@ -371,14 +395,16 @@ class Day:
         self.day = []
         self.events = {"work": ["w", 4],
                        "class": ["c", 2],
-                       "study": ["s", 1],
+                       "study": ["s", 2],
                        "exercise": ["e", 1],
                        "sleep": ["z", 8],
                        "deposit": ["d", 0],
                        "withdraw": ["W", 0],
                        "get loan": ["l", 0],
                        "repay loan": ["r", 0],
-                       "ask for promotion": ["p", 0]}
+                       "ask for promotion": ["p", 0],
+                       "buy caffiene pill": ["a", 0],
+                       "buy alarm clock": ["k", 0]}
 
     def __str__(self):
         return " ".join(self.display_day)
@@ -388,7 +414,7 @@ class Day:
 
     def add_event(self, e):
         ignore = ["leave", "deposit", "withdraw", "get loan", "repay loan",
-        "ask for promotion"]
+        "ask for promotion", "buy caffiene pill", "buy alarm clock"]
         if e == "class" and self.player.money < 20:
             return
         if e not in ignore:
@@ -396,9 +422,23 @@ class Day:
             if event[1] + len(self.day) - 1 < self.length:
                 self.player.manage_event(event[0])
                 padding = self.display_day.index("_")
-                for i in xrange(0, event[1]):
-                    self.display_day[padding+i] = event[0]
-                    self.day.append(event[0])
+                if e == "sleep":
+                    if self.player.alarm_clock and self.player.pill == 0:
+                        for i in xrange(0, 4):
+                            self.display_day[padding+i] = event[0]
+                            self.day.append(event[0])
+                    if not self.player.alarm_clock and self.player.pill == 1:
+                        for i in xrange(0, 4):
+                            self.display_day[padding+i] = event[0]
+                            self.day.append(event[0])
+                    if not self.player.alarm_clock and self.player.pill == 0:
+                        for i in xrange(0, event[1]):
+                            self.display_day[padding+i] = event[0]
+                            self.day.append(event[0])
+                else:
+                    for i in xrange(0, event[1]):
+                        self.display_day[padding+i] = event[0]
+                        self.day.append(event[0])
 
 
 class DayManager:
@@ -501,7 +541,8 @@ def game(rows, cols, y, x, stats):
     gym = Building(5, 5, "gym", "G", ["exercise", "personal training", "leave"])
     house = Building(2, 48, "house", "H", ["sleep", "leave"])
     bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "get loan", "repay loan", "leave"])
-    buildings = [work, school, gym, house, bank]
+    store = Building(15, 50, "store", "C", ["buy caffiene pill", "buy alarm clock", "leave"])
+    buildings = [work, school, gym, house, bank, store]
 
     # draw buildings
     for b in buildings:
@@ -523,6 +564,9 @@ def game(rows, cols, y, x, stats):
         world.addstr(info.y+2, info.x, "Job: {} Pay: {}".format(
                                                           info.player.job[0],
                                                           info.player.job[1]))
+        world.addstr(info.y+3, info.x, "Pills: {}".format(player.pill))
+        clock = "Yes" if player.alarm_clock else "No"
+        world.addstr(info.y+4, info.x, "Alarm Clock: {}".format(clock))
         world.addstr(bottom, 1, 'Today : ['+str(day_manager.today)+']')
 
         # player movement
