@@ -18,8 +18,6 @@ class Player:
 
     This is the player class. Moves the player around the world. Contains
     player attributes n other goodies such as items.
-
-    -- maybe luck could be fun
     """
 
     def __init__(self, y, x, dimensions, money, knowledge, strength, charm):
@@ -36,7 +34,8 @@ class Player:
         self.building = None
         self.employed = False
         self.bank = BankAccount()
-        self.positions = {0: ["janitor", 8],
+        self.positions = {0: ["Unemployed", 0],
+                          20: ["janitor", 8],
                           30: ["mailclerk", 10],
                           45: ["salesman", 15],
                           75: ["manager", 30],
@@ -85,6 +84,8 @@ class Player:
             return self.positions[45]
         if self.knowledge >= 30:
             return self.positions[30]
+        if self.knowledge >= 20:
+            return self.positions[20]
         return self.positions[0]
 
 
@@ -247,17 +248,25 @@ class Building:
         """
         w.addstr(self.y, self.x, self.appearance)
 
-    def display_options(self):
+    def display_options(self, player):
         string = " What do you want to do?\n (Press the number on the keyboard)\n"
         for count, option in enumerate(self.inside_options):
+            if option == "ask for promotion" and player.job[1] == 0:
+                option = "ask for job"
             string += " {}: {}\n".format(count+1, option)
+        if self.purpose == "school":
+            string += "\n\n Class costs $20"
+        if self.purpose == "pub":
+            string += "\n\n Beer costs $20"
+        if self.purpose == "store":
+            string += "\n\n Pills costs $45, Clock costs $200"
         return string
 
     def player_input(self, key, world, player, day_manager, buildings):
         for i in xrange(1, len(self.inside_options)+1):
             if key == ord(str(i)):
                 event = player.building.inside_options[i-1]
-                day_manager.today.add_event(event)
+                do_event = day_manager.today.add_event(event)
                 if event == "sleep":  # creates new day
                     day_manager.add_day()
                     world.addstr(20, 1, 'Today : ['+str(day_manager.today)+']')
@@ -417,11 +426,26 @@ class Building:
                         world.addstr(14, 5, "Result: {}, You Lose!".format(results[result]))
                     world.addstr(15, 5, "Press 1 to play again, 2 to Exit")
                     choice = ""
-                if event == "drink beer":
+                if event == "drink beer" and do_event:
                     world.addstr(10, 5, "                                      ")
                     world.addstr(10, 5, "Delicious. Charm +2")
+                if event == "personal training" and do_event:
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "Arnold would be proud! Strength +2")
+                if event == "class" and do_event:
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "Brain blast! Knowledge +2")
+                if event == "study" and do_event:
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "Knowledge is Power. Knowledge +1")
+                if event == "exercise" and do_event:
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "No Pain. No Gain. Strength +1")
                 if event == "bar fight":
                     world.addstr(10, 5, "No one to fight rn. please leave.")
+                if not do_event:
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "You can't afford this.")
 
 
 class Day:
@@ -438,7 +462,8 @@ class Day:
         self.events = {"work": ["w", 4],
                        "class": ["c", 2],
                        "study": ["s", 2],
-                       "exercise": ["e", 1],
+                       "exercise": ["e", 2],
+                       "personal training": ["t", 2],
                        "sleep": ["z", 8],
                        "deposit": ["d", 0],
                        "withdraw": ["W", 0],
@@ -462,11 +487,13 @@ class Day:
         "ask for promotion", "buy caffiene pill", "buy alarm clock",
         "coin flip", "bar fight"]
         if e == "class" and self.player.money < 20:
-            return
+            return False
         if e == "coin flip" and self.player.money < 10:
-            return
+            return False
         if e == "drink beer" and self.player.money < 20:
-            return
+            return False
+        if e == "personal training" and self.player.money < 20:
+            return False
         if e not in ignore:
             event = self.events[e]
             if event[1] + len(self.day) - 1 < self.length:
@@ -493,6 +520,7 @@ class Day:
                     for i in xrange(0, event[1]):
                         self.display_day[padding+i] = event[0]
                         self.day.append(event[0])
+        return True
 
 
 class DayManager:
@@ -553,10 +581,11 @@ def redraw_world(world, buildings):
 def end_game_rating(player, day_manager):
     rating = ""
     total_assets = player.money + player.bank.balance() - player.bank.loan_balance()
-    history = "Wealth: {}, Knowledge: {}, Strength: {}, Days: {}".format(
+    history = "Wealth: {}, Knowledge: {}, Strength: {}, Charm: {}, Days: {}".format(
         total_assets,
         player.knowledge,
         player.strength,
+        player.charm,
         day_manager.day_number()
     )
     print "Knowledge: {}".format(player.knowledge)
@@ -681,7 +710,7 @@ def game(rows, cols, y, x, stats):
                     player.in_building = True
                     player.building = b
                     world.clear()
-                    world.addstr(1, 0, b.display_options())
+                    world.addstr(1, 0, b.display_options(player))
                     world.border(0)
                     world.addstr(0, 24, b.purpose)
                     player.x += 1
