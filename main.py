@@ -1,5 +1,5 @@
 """
-Text RPG
+Teminal RPG
 
 a simple terminal based RPG.
 """
@@ -634,7 +634,7 @@ def pregame():
 def redraw_world(world, buildings):
     world.clear()
     world.border(0)
-    world.addstr(0, 24, "Text RPG")
+    world.addstr(0, 24, "Teminal RPG")
     for b in buildings:
         b.draw(world)
 
@@ -661,7 +661,7 @@ def end_game_rating(player, day_manager):
 
 def game(rows, cols, y, x, stats):
     # Game Setup
-    title = "Text RPG"
+    title = "Teminal RPG"
     curses.initscr()
     world = curses.newwin(rows, cols, y, x)
     world.keypad(1)
@@ -679,6 +679,7 @@ def game(rows, cols, y, x, stats):
     world.addstr(13, 5, "2. 40 Days")
     world.addstr(14, 5, "3. 100 Days")
     world.border(0)
+    world.addstr(0, 24, title)
     key = None
     choice = 1
     day_dict = {1: 15, 2: 40, 3: 100}
@@ -691,7 +692,7 @@ def game(rows, cols, y, x, stats):
     max_days = day_dict[choice]
     world.clear()
     world.border(0)
-    world.addstr(0, 24, "Text RPG")
+    world.addstr(0, 24, "Teminal RPG")
     intro = "You wake up in a small town. \n " + \
             "    No memory of how you got here. \n " + \
             "    Someone gives you a key and says \n     you stay at their house (H)\n" + \
@@ -699,13 +700,14 @@ def game(rows, cols, y, x, stats):
             "     Hit space to play"
     world.addstr(5, 5, intro)
     world.border(0)
+    world.addstr(0, 24, title)
     key = None
     while key != ord(' '):
         key = world.getch()
 
     world.clear()
     world.border(0)
-    world.addstr(0, 24, "Text RPG")
+    world.addstr(0, 24, "Teminal RPG")
     # Initialize Player
     player_y = 1
     player_x = 35
