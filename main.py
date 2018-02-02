@@ -61,10 +61,13 @@ class Player:
         if event == "c":  # class
             self.knowledge += 2
             self.money -= 20
-        if event == "e":  # exercise
-            self.strength += 1
         if event == "s":  # study
             self.knowledge += 1
+        if event == "t":
+            self.strength += 2
+            self.money -= 20
+        if event == "e":  # exercise
+            self.strength += 1
         if event == "w":  # work
             self.money += (self.job[1] * 4)  # shifts are 4 hours long
         if event == "b":
@@ -121,7 +124,7 @@ class BankAccount:
             self._balance -= amount
 
     def balance(self):
-        return self._balance
+        return int(self._balance)
 
     def get_interest_rate(self):
         return self.interest_rate * 100
@@ -162,7 +165,7 @@ class Loan:
         return "{}".format(self.balance)
 
     def get_balance(self):
-        return self.balance
+        return int(self.balance)
 
     def get_interest_rate(self):
         return self.interest_rate * 100
@@ -260,6 +263,8 @@ class Building:
             string += "\n\n Beer costs $20"
         if self.purpose == "store":
             string += "\n\n Pills costs $45, Clock costs $200"
+        if self.purpose == "bank":
+            string += "\n\n Loan interest rate is 9.5%"
         return string
 
     def player_input(self, key, world, player, day_manager, buildings):
@@ -381,6 +386,7 @@ class Building:
                         world.addstr(11, 5, "Pay per Hour: {}".format(player.job[1]))
                     else:
                         world.addstr(10, 5, "Gain more knowledge to get promoted")
+                        world.addstr(11, 5, "                                   ")
                 if event == "buy caffiene pill":
                     if player.money >= 45:
                         player.money -= 45
@@ -426,6 +432,14 @@ class Building:
                         world.addstr(14, 5, "Result: {}, You Lose!".format(results[result]))
                     world.addstr(15, 5, "Press 1 to play again, 2 to Exit")
                     choice = ""
+                if event == "work" and do_event:
+                    world.addstr(10, 5, "                                                      ")
+                    if day_manager.day_number() % 2 == 0:
+                        bonus = player_bonus(player)
+                        if bonus:
+                            world.addstr(10, 5, "Your boss loves your charm!                   ")
+                            world.addstr(11, 5, "You got a bonus ${} every shift you work today!".format(bonus))
+                            player.money += bonus
                 if event == "drink beer" and do_event:
                     world.addstr(10, 5, "                                      ")
                     world.addstr(10, 5, "Delicious. Charm +2")
@@ -442,10 +456,25 @@ class Building:
                     world.addstr(10, 5, "                                      ")
                     world.addstr(10, 5, "No Pain. No Gain. Strength +1")
                 if event == "bar fight":
-                    world.addstr(10, 5, "No one to fight rn. please leave.")
+                    win, money_taken = bar_fight(player)
+                    if win:
+                        world.addstr(10, 5, "You won a bar fight and" +\
+                        " found ${} \n    in the guy's wallet".format(
+                                                                money_taken))
+                        world.border(0)
+                        player.money += money_taken
+                    else:
+                        world.addstr(10, 5, "You died in a bar fight. Press space to exit.")
+                        world.addstr(11, 5, "                                             ")
+                        world.border(0)
+                        key = None
+                        while key != ord(' '):
+                            key = world.getch()
+                        return True
                 if not do_event:
                     world.addstr(10, 5, "                                      ")
                     world.addstr(10, 5, "You can't afford this.")
+        return False
 
 
 class Day:
@@ -547,8 +576,40 @@ class DayManager:
         return len(self.day_list)
 
 
+def player_bonus(player):
+    if player.charm >= 250:
+        return 500
+    if player.charm >= 200:
+        return 250
+    if player.charm >= 150:
+        return 100
+    if player.charm >= 100:
+        return 50
+    if player.charm >= 50:
+        return 25
+    if player.charm >= 25:
+        return 10
+    if player.charm >= 10:
+        return 5
+    return 0
+
+
 def coin_toss():
     return randint(1, 2)
+
+
+def bar_fight(player):
+    """
+    False means you lose
+    """
+    s = player.strength
+    w = player.money
+    opponent_strength = randint(s-6, s+4)
+    opponent_money = randint(w-15, w+8)
+    if player.strength > opponent_strength:
+        return True, opponent_money
+    return False, 0
+
 
 def format_time(start):
     return int(time.time() - start)
@@ -581,7 +642,7 @@ def redraw_world(world, buildings):
 def end_game_rating(player, day_manager):
     rating = ""
     total_assets = player.money + player.bank.balance() - player.bank.loan_balance()
-    history = "Wealth: {}, Knowledge: {}, Strength: {}, Charm: {}, Days: {}".format(
+    history = "Wealth: {}, Knowledge: {}, Strength: {}, Charm: {}, Days: {}\n".format(
         total_assets,
         player.knowledge,
         player.strength,
@@ -679,6 +740,7 @@ def game(rows, cols, y, x, stats):
     # Initialize various needed variables
     key = None
     gameover = False
+    death = False
     day = 0
     next_day = True
     start_time = time.time()
@@ -717,11 +779,16 @@ def game(rows, cols, y, x, stats):
 
         # exit building and return to world
         if player.in_building:
-            player.building.player_input(key, world, player,
+            death = player.building.player_input(key, world, player,
                                          day_manager, buildings)
 
         # Check if day limit has been reached
         if day_manager.day_number() > max_days:
+            gameover = True
+            key = ord('q')
+
+        # Check if player died in bar fight
+        if death:
             gameover = True
             key = ord('q')
 
