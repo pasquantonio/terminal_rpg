@@ -22,13 +22,14 @@ class Player:
     -- maybe luck could be fun
     """
 
-    def __init__(self, y, x, dimensions, money, knowledge, strength):
+    def __init__(self, y, x, dimensions, money, knowledge, strength, charm):
         self.y = y
         self.x = x
         self.dimensions = dimensions
         self.money = money
         self.knowledge = knowledge
         self.strength = strength
+        self.charm = charm
         self.character = '@'
         self.name = "tab"
         self.in_building = False
@@ -67,6 +68,9 @@ class Player:
             self.knowledge += 1
         if event == "w":  # work
             self.money += (self.job[1] * 4)  # shifts are 4 hours long
+        if event == "b":
+            self.charm += 2
+            self.money -= 20
 
     def check_promotion(self):
         if self.knowledge >= 250:
@@ -191,10 +195,11 @@ class Information:
         self.price_list = ["", "", "", ""]
 
     def __str__(self):
-        return "Cash: {} Knowledge: {}  Strength: {}   ".format(
+        return "Cash: {} Knowledge: {}  Strength: {} Charm: {}  ".format(
                                                         self.player.money,
                                                         self.player.knowledge,
-                                                        self.player.strength)
+                                                        self.player.strength,
+                                                        self.player.charm)
 
     def price(self, coin="BTC-USD"):
         tkr = self.public_client.get_product_ticker(coin)
@@ -412,6 +417,9 @@ class Building:
                         world.addstr(14, 5, "Result: {}, You Lose!".format(results[result]))
                     world.addstr(15, 5, "Press 1 to play again, 2 to Exit")
                     choice = ""
+                if event == "drink beer":
+                    world.addstr(10, 5, "                                      ")
+                    world.addstr(10, 5, "Delicious. Charm +2")
                 if event == "bar fight":
                     world.addstr(10, 5, "No one to fight rn. please leave.")
 
@@ -440,6 +448,7 @@ class Day:
                        "buy caffiene pill": ["a", 0],
                        "buy alarm clock": ["k", 0],
                        "bar fight": ["f", 0],
+                       "drink beer": ["b", 2],
                        "coin flip": ["h", 0]}
 
     def __str__(self):
@@ -456,6 +465,8 @@ class Day:
             return
         if e == "coin flip" and self.player.money < 10:
             return
+        if e == "drink beer" and self.player.money < 20:
+            return
         if e not in ignore:
             event = self.events[e]
             if event[1] + len(self.day) - 1 < self.length:
@@ -463,11 +474,15 @@ class Day:
                 padding = self.display_day.index("_")
                 if e == "sleep":
                     if self.player.alarm_clock and self.player.pill == 0:
+                        for i in xrange(0, 6):
+                            self.display_day[padding+i] = event[0]
+                            self.day.append(event[0])
+                    if self.player.alarm_clock and self.player.pill >= 1:
                         for i in xrange(0, 4):
                             self.display_day[padding+i] = event[0]
                             self.day.append(event[0])
-                    if not self.player.alarm_clock and self.player.pill == 1:
-                        for i in xrange(0, 4):
+                    if not self.player.alarm_clock and self.player.pill >= 1:
+                        for i in xrange(0, 6):
                             self.display_day[padding+i] = event[0]
                             self.day.append(event[0])
                     if not self.player.alarm_clock and self.player.pill == 0:
@@ -523,7 +538,8 @@ def pregame():
     money = 25
     knowledge = randint(1, 5)
     strength = randint(1, 5)
-    return [money, knowledge, strength]
+    charm = randint(1, 5)
+    return [money, knowledge, strength, charm]
 
 
 def redraw_world(world, buildings):
@@ -564,16 +580,47 @@ def game(rows, cols, y, x, stats):
     world.border(0)
     world.nodelay(1)
     world.addstr(0, 24, title)
-    max_days = 10
     bottom = 20
     dimensions = world.getmaxyx()
     dimensions = (bottom, dimensions[1])
 
+    world.addstr(10, 5, "Choose game length then hit space.\n     Default is 15 days.")
+    world.addstr(12, 5, "1. 15 Days")
+    world.addstr(13, 5, "2. 40 Days")
+    world.addstr(14, 5, "3. 100 Days")
+    world.border(0)
+    key = None
+    choice = 1
+    day_dict = {1: 15, 2: 40, 3: 100}
+    valid = [ord('1'), ord('2'), ord('3')]
+    while key != ord(' '):
+        key = world.getch()
+        if key in valid:
+            choice = int(str(chr(key)))
+        world.addstr(15, 5, "Your Choice: {} days ".format(day_dict[choice]))
+    max_days = day_dict[choice]
+    world.clear()
+    world.border(0)
+    world.addstr(0, 24, "Text RPG")
+    intro = "You wake up in a small town. \n " + \
+            "    No memory of how you got here. \n " + \
+            "    Someone gives you a key and says \n     you stay at their house (H)\n" + \
+            "     They also tell you to go to work (W) \n     if you need money.\n\n\n" + \
+            "     Hit space to play"
+    world.addstr(5, 5, intro)
+    world.border(0)
+    key = None
+    while key != ord(' '):
+        key = world.getch()
+
+    world.clear()
+    world.border(0)
+    world.addstr(0, 24, "Text RPG")
     # Initialize Player
     player_y = 1
     player_x = 35
     player = Player(player_y, player_x, dimensions,
-                    stats[0], stats[1], stats[2])
+                    stats[0], stats[1], stats[2], stats[3])
 
     # Initialize Day
     day_manager = DayManager(player)
@@ -592,7 +639,7 @@ def game(rows, cols, y, x, stats):
     house = Building(2, 48, "house", "H", ["sleep", "leave"])
     bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "get loan", "repay loan", "leave"])
     store = Building(15, 50, "store", "C", ["buy caffiene pill", "buy alarm clock", "leave"])
-    pub = Building(9, 6, "pub", "P", ["bar fight", "leave"])
+    pub = Building(9, 6, "pub", "P", ["drink beer", "bar fight", "leave"])
     casino = Building(3 , 30, "casino", "X", ["coin flip", "leave"])
     buildings = [work, school, gym, house, bank, store, pub, casino]
 
@@ -656,6 +703,7 @@ def game(rows, cols, y, x, stats):
 
 
 if __name__ == "__main__":
+
     window = [30, 60, 0, 0]
     player_stats = pregame()
     game(window[0], window[1], window[2], window[3], player_stats)
