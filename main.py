@@ -105,7 +105,7 @@ class BankAccount:
     """
     def __init__(self):
         self._balance = 0
-        self.interest_rate = 0.05
+        self.interest_rate = 0.015
         self.loan = None
 
     def deposit(self, amount):
@@ -146,7 +146,7 @@ class Loan:
     """
     Easier to manage when its in a class on its own
     """
-    def __init__(self, amount, life, ir = .05, vi = False):
+    def __init__(self, amount, life, ir = .095, vi = False):
         self.amount = amount
         self.balance = amount
         self.life = life  # number of days to payback loan
@@ -191,7 +191,7 @@ class Information:
         self.price_list = ["", "", "", ""]
 
     def __str__(self):
-        return "Cash: {} Knowledge: {} Strength: {}".format(
+        return "Cash: {} Knowledge: {}  Strength: {}   ".format(
                                                         self.player.money,
                                                         self.player.knowledge,
                                                         self.player.strength)
@@ -371,16 +371,50 @@ class Building:
                     if player.money >= 45:
                         player.money -= 45
                         player.pill += 1
+                        world.addstr(10, 5, "                                      ")
                         world.addstr(10, 5, "Purchased 1 pill.")
                     else:
                         world.addstr(10, 5, "You need 45 dollars to buy that.")
                 if event == "buy alarm clock":
-                    if player.money >= 200:
-                        player.money -= 200
-                        player.alarm_clock = True
-                        world.addstr(10, 5, "Purchased alarm clock")
+                    if not player.alarm_clock:
+                        if player.money >= 200:
+                            player.money -= 200
+                            player.alarm_clock = True
+                            world.addstr(10, 5, "Purchased alarm clock.")
+                        else:
+                            world.addstr(10, 5, "You need 200 dollars to buy that.")
                     else:
-                        world.addstr(10, 5, "You need 200 dollars to buy that.")
+                        world.addstr(10, 5, "You already own an alarm clock.      ")
+                if event == "coin flip":
+                    world.addstr(9, 5, "10 dollars to place a bet.              ")
+                    world.addstr(13, 5, "Your Choice:                           ")
+                    world.addstr(14, 5, "Result:                                ")
+                    world.addstr(15, 5, "                                       ")
+                    world.addstr(10 , 5, "Choose one then press space to submit:")
+                    world.addstr(11, 5, "1. Heads")
+                    world.addstr(12, 5, "2. Tails")
+                    key = None
+                    valid = [ord("1"), ord("2")]
+                    choice = 1
+                    results = {1: "Heads", 2: "Tails", "": ""}
+                    while key != ord(' '):
+                        key = world.getch()
+                        if key in valid:
+                            choice = int(str(chr(key)))
+                        world.addstr(13, 5, "Your Choice: {}".format(results[choice]))
+                    result = coin_toss()
+                    if choice == result:
+                        player.money += 10
+                        world.addstr(14, 5, "Result: {}, You Win! ".format(results[result]))
+                        world.addstr(15, 5, "Press 1 to play again, 2 to Exit")
+                    else:
+                        player.money -= 10
+                        world.addstr(14, 5, "Result: {}, You Lose!".format(results[result]))
+                    world.addstr(15, 5, "Press 1 to play again, 2 to Exit")
+                    choice = ""
+                if event == "bar fight":
+                    world.addstr(10, 5, "No one to fight rn. please leave.")
+
 
 class Day:
     """
@@ -404,7 +438,9 @@ class Day:
                        "repay loan": ["r", 0],
                        "ask for promotion": ["p", 0],
                        "buy caffiene pill": ["a", 0],
-                       "buy alarm clock": ["k", 0]}
+                       "buy alarm clock": ["k", 0],
+                       "bar fight": ["f", 0],
+                       "coin flip": ["h", 0]}
 
     def __str__(self):
         return " ".join(self.display_day)
@@ -414,8 +450,11 @@ class Day:
 
     def add_event(self, e):
         ignore = ["leave", "deposit", "withdraw", "get loan", "repay loan",
-        "ask for promotion", "buy caffiene pill", "buy alarm clock"]
+        "ask for promotion", "buy caffiene pill", "buy alarm clock",
+        "coin flip", "bar fight"]
         if e == "class" and self.player.money < 20:
+            return
+        if e == "coin flip" and self.player.money < 10:
             return
         if e not in ignore:
             event = self.events[e]
@@ -465,6 +504,9 @@ class DayManager:
         return len(self.day_list)
 
 
+def coin_toss():
+    return randint(1, 2)
+
 def format_time(start):
     return int(time.time() - start)
 
@@ -478,9 +520,9 @@ def generate_map(dimensions):
 
 
 def pregame():
-    money = 100
-    knowledge = randint(1, 10)
-    strength = randint(1, 10)
+    money = 25
+    knowledge = randint(1, 5)
+    strength = randint(1, 5)
     return [money, knowledge, strength]
 
 
@@ -492,11 +534,19 @@ def redraw_world(world, buildings):
         b.draw(world)
 
 
-def end_game_rating(player):
+def end_game_rating(player, day_manager):
     rating = ""
     total_assets = player.money + player.bank.balance() - player.bank.loan_balance()
+    history = "Wealth: {}, Knowledge: {}, Strength: {}, Days: {}".format(
+        total_assets,
+        player.knowledge,
+        player.strength,
+        day_manager.day_number()
+    )
     print "Knowledge: {}".format(player.knowledge)
     print "Wealth: {}".format(total_assets)
+    with open("game_history.txt", "a") as filewriter:
+        filewriter.write(history)
     if total_assets < 101 and player.knowledge < 20:
         return "Poor and Stupid"
     else:
@@ -542,7 +592,9 @@ def game(rows, cols, y, x, stats):
     house = Building(2, 48, "house", "H", ["sleep", "leave"])
     bank = Building(15, 30, "bank", "B", ["deposit", "withdraw", "get loan", "repay loan", "leave"])
     store = Building(15, 50, "store", "C", ["buy caffiene pill", "buy alarm clock", "leave"])
-    buildings = [work, school, gym, house, bank, store]
+    pub = Building(9, 6, "pub", "P", ["bar fight", "leave"])
+    casino = Building(3 , 30, "casino", "X", ["coin flip", "leave"])
+    buildings = [work, school, gym, house, bank, store, pub, casino]
 
     # draw buildings
     for b in buildings:
@@ -600,7 +652,7 @@ def game(rows, cols, y, x, stats):
     curses.beep()
     curses.endwin()
     print "Gameover."
-    print(end_game_rating(player))
+    print(end_game_rating(player, day_manager))
 
 
 if __name__ == "__main__":
