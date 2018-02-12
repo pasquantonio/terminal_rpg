@@ -6,7 +6,6 @@ a simple terminal based RPG.
 
 import curses
 import time
-import gdax  # crypto prices for game currencies lol
 import argparse  # maybe later
 from curses import KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT
 from random import randint
@@ -193,10 +192,6 @@ class Information:
         self.y = y
         self.x = x
         self.player = player
-        # initialize gdax public client for crypto prices
-        self.coins = ["BTC-USD", "ETH-USD", "LTC-USD", "BCH-USD"]
-        self.public_client = gdax.PublicClient()
-        self.price_list = ["", "", "", ""]
 
     def __str__(self):
         return "Cash: {} Knowledge: {}  Strength: {} Charm: {}  ".format(
@@ -213,13 +208,6 @@ class Information:
         self.price_list = []
         for coin in self.coins:
             self.price_list.append(self.price(coin))
-
-    def prices(self):
-        self._refresh_prices()
-        return "BTC: {}\nETH: {}\nLTC: {}\nBCH: {}".format(self.price_list[0],
-                                                           self.price_list[1],
-                                                           self.price_list[2],
-                                                           self.price_list[3])
 
     def bank_info(self):
         return "Balance: {0:.2f} @ {1:.2f}% | Loan balance: {2:.2f} @ {3:.2f}%".format(
@@ -264,7 +252,7 @@ class Building:
         if self.purpose == "store":
             string += "\n\n Pills costs $45, Clock costs $200"
         if self.purpose == "bank":
-            string += "\n\n Loan interest rate is 9.5%"
+            string += "\n\n        Loan interest rate is 9.5%"
         return string
 
     def player_input(self, key, world, player, day_manager, buildings):
